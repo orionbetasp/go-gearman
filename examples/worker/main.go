@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
-
 	"time"
 
-	"github.com/zhanghjster/go-gearman"
+	"github.com/orionbetasp/go-gearman"
 )
 
 func main() {
@@ -55,5 +55,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	worker.Work()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker.Work(ctx)
 }

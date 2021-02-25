@@ -1,5 +1,7 @@
 package gearman
 
+import "context"
+
 type Client struct {
 	ts *TaskSet
 	cm *ClientMisc
@@ -20,21 +22,21 @@ func (c *Client) Init(server []string) *Client {
 }
 
 // add task, see TaskOptFuncs for all use case
-func (c *Client) AddTask(funcName string, data []byte, opt ...TaskOptFunc) (*Task, error) {
-	return c.ts.AddTask(funcName, data, opt...)
+func (c *Client) AddTask(ctx context.Context, funcName string, data []byte, opt ...TaskOptFunc) (*Task, error) {
+	return c.ts.AddTask(ctx, funcName, data, opt...)
 }
 
 // get task status of handle default, see TaskStatusFuncs for all use case
-func (c *Client) TaskStatus(task *Task, opts ...TaskStatusOptFunc) (TaskStatus, error) {
-	return c.ts.TaskStatus(task, opts...)
+func (c *Client) TaskStatus(ctx context.Context, task *Task, opts ...TaskStatusOptFunc) (TaskStatus, error) {
+	return c.ts.TaskStatus(ctx, task, opts...)
 }
 
-func (c *Client) Echo(server string, data []byte) ([]byte, error) {
-	return c.cm.Echo(server, data)
+func (c *Client) Echo(ctx context.Context, server string, data []byte) ([]byte, error) {
+	return c.cm.Echo(ctx, server, data)
 }
 
-func (c *Client) SetConnOption(name string) (string, error) {
-	return c.cm.SetConnOption(name)
+func (c *Client) SetConnOption(ctx context.Context, name string) (string, error) {
+	return c.cm.SetConnOption(ctx, name)
 }
 
 type ClientMisc struct {
@@ -45,11 +47,11 @@ func newClientMisc() *ClientMisc {
 	return new(ClientMisc)
 }
 
-func (cm *ClientMisc) SetConnOption(name string) (string, error) {
+func (cm *ClientMisc) SetConnOption(ctx context.Context, name string) (string, error) {
 	var req = newRequestWithType(PtOptionReq)
 	req.SetConnOption(name)
 
-	resp, err := cm.sender.sendAndWaitResp(req)
+	resp, err := cm.sender.sendAndWaitResp(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -57,11 +59,11 @@ func (cm *ClientMisc) SetConnOption(name string) (string, error) {
 	return resp.GetConnOption()
 }
 
-func (cm *ClientMisc) Echo(server string, data []byte) ([]byte, error) {
+func (cm *ClientMisc) Echo(ctx context.Context, server string, data []byte) ([]byte, error) {
 	var req = newRequestToServerWithType(server, PtEchoReq)
 	req.SetData(data)
 
-	resp, err := cm.sender.sendAndWaitResp(req)
+	resp, err := cm.sender.sendAndWaitResp(ctx, req)
 	if err != nil {
 		return nil, err
 	}

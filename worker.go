@@ -1,6 +1,7 @@
 package gearman
 
 import (
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -158,7 +159,7 @@ func (w *Worker) RegisterFunction(funcName string, handle JobHandle, opt WorkerO
 	return nil
 }
 
-func (w *Worker) Work() {
+func (w *Worker) Work(ctx context.Context) {
 	var wg sync.WaitGroup
 
 	for _, s := range w.server {
@@ -174,7 +175,7 @@ func (w *Worker) Work() {
 				// retrieve next job
 				var req = newRequestToServerWithType(server, PtGrabJobAll)
 
-				resp, err := w.sender.sendAndWaitResp(req)
+				resp, err := w.sender.sendAndWaitResp(ctx, req)
 				if err != nil {
 					Log.Printf("send grab req to %s fail, %s", server, err.Error())
 					return

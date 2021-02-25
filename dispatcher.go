@@ -1,8 +1,8 @@
 package gearman
 
 import (
+	"context"
 	"sync"
-
 	"time"
 
 	"github.com/pkg/errors"
@@ -60,7 +60,7 @@ func NewDispatcher(server []string) *Dispatcher {
 	return d
 }
 
-var DefaultSendTimeout = 10 * time.Second
+var DefaultSendTimeout = 5 * time.Second
 
 func (d *Dispatcher) Send(req *Request) error {
 	if req.Server != "" {
@@ -100,7 +100,7 @@ func newSender(ds *Dispatcher) *Sender {
 	return &Sender{ds: ds, respCh: make(chan *Response)}
 }
 
-func (s *Sender) sendAndWaitResp(req *Request) (resp *Response, err error) {
+func (s *Sender) sendAndWaitResp(ctx context.Context, req *Request) (resp *Response, err error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 
@@ -111,9 +111,10 @@ func (s *Sender) sendAndWaitResp(req *Request) (resp *Response, err error) {
 
 	Log.Println("sender Wait for response")
 
-	// Wait for response
 	select {
 	case resp = <-s.respCh:
+	case <-ctx.Done():
+		return nil, errors.New("wait resp timeout")
 	case <-peer.Closed():
 		return nil, errors.New("conn closed")
 	}
@@ -150,6 +151,7 @@ func pushReqToChanWithTimeout(ch chan *Request, req *Request) error {
 	select {
 	case ch <- req:
 	case <-req.Timeout:
+		req.retCh <- errors.New("send timeout")
 		return errors.New("send timeout")
 	}
 	return nil

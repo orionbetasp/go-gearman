@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
-	"github.com/zhanghjster/go-gearman"
+	"github.com/orionbetasp/go-gearman"
 )
 
 func main() {
@@ -13,7 +15,9 @@ func main() {
 
 	// echo for test
 	for _, s := range server {
-		ret, err := client.Echo(s, []byte("hello"))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ret, err := client.Echo(ctx, s, []byte("hello"))
+		cancel()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -22,8 +26,11 @@ func main() {
 
 	var funcName = "test"
 
+	ctxBg, cancelBg := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelBg()
 	// do background task
-	client.AddTask(
+	_, _ = client.AddTask(
+		ctxBg,
 		// function name
 		funcName,
 		// data sent to worker
@@ -38,27 +45,33 @@ func main() {
 	)
 
 	for i := 0; i < 10; i++ {
-		log.Printf("run non-background task %d", i)
+		i := i
+		go func() {
+			log.Printf("run non-background task %d", i)
 
-		// do non-background task, block until task complete
-		task, err := client.AddTask(
-			funcName,
-			[]byte("non-background"),
-			// handler for task data update
-			gearman.TaskOptOnData(func(resp *gearman.Response) {
-				data, _ := resp.GetData()
-				log.Printf("task update, data returned from worker is '%s'", string(data))
-			}),
-		)
-		if err != nil {
-			log.Fatal(err)
-		}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			// do non-background task, block until task complete
+			task, err := client.AddTask(
+				ctx,
+				funcName,
+				[]byte("non-background"),
+				// handler for task data update
+				gearman.TaskOptOnData(func(resp *gearman.Response) {
+					data, _ := resp.GetData()
+					log.Printf("task update, data returned from worker is '%s'", string(data))
+				}),
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		log.Printf("task send to %s", task.Remote())
+			log.Printf("task send to %s", task.Remote())
 
-		// wait for complete
-		data, err := task.Wait()
-		log.Printf("task finished, returned value '%s'", string(data))
+			// wait for complete
+			data, err := task.Wait(ctx)
+			log.Printf("task finished, returned value '%s'", string(data))
+		}()
 	}
 
 }

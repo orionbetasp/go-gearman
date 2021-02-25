@@ -1,6 +1,7 @@
 package gearman
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -29,7 +30,7 @@ func (adm *Admin) Init(server []string) *Admin {
 }
 
 // send admin command, see AdmOptFuncs for command options
-func (adm *Admin) Do(server string, opt AdmOptFunc) (data []string, err error) {
+func (adm *Admin) Do(ctx context.Context, server string, opt AdmOptFunc) (data []string, err error) {
 	if opt == nil {
 		return nil, errors.New("admin cmd not set")
 	}
@@ -43,7 +44,7 @@ func (adm *Admin) Do(server string, opt AdmOptFunc) (data []string, err error) {
 
 	if waitResp {
 		var resp *Response
-		resp, err = adm.sender.sendAndWaitResp(req)
+		resp, err = adm.sender.sendAndWaitResp(ctx, req)
 		if err == nil {
 			for _, line := range resp.ArgsBytes() {
 				data = append(data, string(line))

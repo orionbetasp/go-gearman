@@ -1,6 +1,7 @@
 package gearman
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -42,7 +43,7 @@ func (t *Task) Remote() string {
 }
 
 // non-background job wait for complete
-func (t *Task) Wait() ([]byte, error) {
+func (t *Task) Wait(ctx context.Context) ([]byte, error) {
 	if !t.NonBackground() {
 		return nil, errors.New("no wait for background task")
 	}
@@ -68,6 +69,8 @@ func (t *Task) Wait() ([]byte, error) {
 			case PtWorkFail:
 				return nil, TaskFailError
 			}
+		case <-ctx.Done():
+			return nil, errors.New("wait non-background job complete timeout")
 		case <-t.peer.Closed():
 			return nil, NetworkError
 		}
@@ -92,7 +95,7 @@ func NewTaskSet() *TaskSet {
 }
 
 // add task, see TaskOptFunc for all use case
-func (t *TaskSet) AddTask(funcName string, data []byte, opts ...TaskOptFunc) (*Task, error) {
+func (t *TaskSet) AddTask(ctx context.Context, funcName string, data []byte, opts ...TaskOptFunc) (*Task, error) {
 	var task = &Task{
 		FuncName: funcName,
 		Type:     defaultTaskPacketType,
@@ -116,7 +119,7 @@ func (t *TaskSet) AddTask(funcName string, data []byte, opts ...TaskOptFunc) (*T
 		opt(req)
 	}
 
-	resp, err := t.tcSender.sendAndWaitResp(req)
+	resp, err := t.tcSender.sendAndWaitResp(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +146,7 @@ func (t *TaskSet) AddTask(funcName string, data []byte, opts ...TaskOptFunc) (*T
 }
 
 // check the status of task, see TaskStatusOptFuncs for all use case
-func (t *TaskSet) TaskStatus(task *Task, opts ...TaskStatusOptFunc) (ts TaskStatus, err error) {
+func (t *TaskSet) TaskStatus(ctx context.Context, task *Task, opts ...TaskStatusOptFunc) (ts TaskStatus, err error) {
 	var req = new(Request)
 	req.Server = task.peer.Remote
 
@@ -151,7 +154,7 @@ func (t *TaskSet) TaskStatus(task *Task, opts ...TaskStatusOptFunc) (ts TaskStat
 		opt(req)
 	}
 
-	resp, err := t.tsSender.sendAndWaitResp(req)
+	resp, err := t.tsSender.sendAndWaitResp(ctx, req)
 	if err != nil {
 		return ts, err
 	}
@@ -193,8 +196,16 @@ func (t *TaskSet) workResponseHandle(resp *Response) {
 
 	Log.Printf("taskset get response, handle %s, remote %s", handle, resp.peer.Remote)
 
-	if task, ok := t.getTask(resp.peer.Remote, handle); ok {
-		go func() { task.respCh <- resp }()
+	startTime := time.Now()
+	endTime := startTime.Add(DefaultSendTimeout)
+	for {
+		if time.Now().After(endTime) {
+			return
+		}
+		if task, ok := t.getTask(resp.peer.Remote, handle); ok {
+			go func() { task.respCh <- resp }()
+		}
+		time.Sleep(DefaultSendTimeout / 10)
 	}
 }
 
